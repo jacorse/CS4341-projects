@@ -28,6 +28,7 @@ class TestCharacter(CharacterEntity):
         self.lastx = 0
         self.lasty = 0
         self.dist_min = 1000000
+        self.help = 0
 
     def do(self, wrld):
         if self.exit_position is None:
@@ -81,7 +82,7 @@ class TestCharacter(CharacterEntity):
             self.lasty = self.y
         print("stillness_counter: ", self.stillness_counter)
 
-        if (self.stillness_counter == 3):
+        if (self.stillness_counter == 1):
             # drop a bomb
             self.place_bomb()
             curr_state = self.state
@@ -101,8 +102,8 @@ class TestCharacter(CharacterEntity):
             possible_moves = self.get_possible_moves(current[0], current[1], wrld)
             for next in possible_moves:
                 expected = 0
-                if self.state == MONSTER and self.dist_min<6:
-                    expected = self.exp_value(wrld, self.exit_position, next[0], next[1], monster[0].x, monster[0].y, 0)
+                # if self.state == MONSTER and self.dist_min<6:
+                #     expected = self.exp_value(wrld, self.exit_position, next[0], next[1], monster[0].x, monster[0].y, 0)
                 # if self.state == BOMB:
                 #     #print("expected bomb values injected")
                 #     expected = self.bomb(wrld, next[0], next[1])
@@ -141,6 +142,8 @@ class TestCharacter(CharacterEntity):
         # list of possible moves for other circumstances
         possible_moves = self.get_possible_moves(self.x, self.y, wrld)
         move_values = [0] * len(possible_moves)
+        for i in range(len(move_values)):
+            move_values[i] = float(move_values[i])
         monsters = []  # list of monsters in map
         explosions = []  # list of explosions in map
         bombs = []  # list of bombs in map
@@ -152,27 +155,32 @@ class TestCharacter(CharacterEntity):
                 explosion = wrld.explosion_at(x, y)
                 bomb = wrld.bomb_at(x, y)
 
+                if bomb is not None:
+                    bombs.append(bomb)
                 if monster is not None:
                     monsters.append(monster)
                 if explosion is not None:
-                    explosions.append((x, y))
-                if bomb is not None:
-                    bombs.append(bomb)
+                    explosions.append(explosion)
+
 
         # no monsters and path not blocked
-        if(exit_position in came_from.keys()):
-            if len(monsters) == 0:
-                self.state = NORMAL
-            else:
-                self.state = MONSTER
+        if(exit_position in came_from.keys() and len(monsters) == 0):
+            #     self.state = NORMAL
+            # else:
+            #     self.state = MONSTER
             while came_from[next_move][0] is not (self.x, self.y):
                 if came_from[next_move][0] == (self.x, self.y):
                     break
                 next_move = came_from[next_move][0]
-
         else:
-            self.state = BLOCKED
+            if exit_position in came_from.keys():
+                self.state = NORMAL
+            else:
+                self.state = BLOCKED
             move_values = self.find_blocked_value(wrld, exit_position, possible_moves, move_values)
+            if (len(bombs) > 0 and self.state is BLOCKED) or self.state is not BLOCKED:
+                for value in move_values:
+                    value = value / 2
             # if bombs present:
             if len(bombs) > 0:
                 move_values = self.find_bomb_value(wrld, bombs, possible_moves, move_values)
@@ -192,6 +200,7 @@ class TestCharacter(CharacterEntity):
                     max_value = move_values[i]
                     max = i
 
+            print("x: ", self.x, "  y: ", self.y)
             print("max: ", max)
             print(move_values)
             print(possible_moves)
@@ -206,8 +215,10 @@ class TestCharacter(CharacterEntity):
     def find_explosion_value(self, wrld, explosions, possible_moves, move_values):
         for i in range(len(possible_moves)):
             for explosion in explosions:
-                if self.get_chebyshev((possible_moves[i]), (explosion[0], explosion[1])) == 0:
-                    move_values[i] -= 100
+                if self.get_chebyshev((possible_moves[i]), (explosion.x, explosion.y)) == 0:
+                    move_values[i] -= 1000000
+                    if explosion.timer <= 0:
+                        move_values[i] += 1000000
 
 
         return move_values
@@ -218,24 +229,52 @@ class TestCharacter(CharacterEntity):
             dist = self.get_chebyshev((monster[0].x, monster[0].y), (self.x, self.y))
             if dist < dist_min:
                 dist_min = dist
-        if dist > 6:
+        if dist_min > 6:
+            for i in range(len(possible_moves)):
+                for monster in monsters:
+                    dist = self.get_manhattan((monster[0].x, monster[0].y), possible_moves[i])
+                    move_values[i] += 0.01 * dist
             return move_values
 
         for i in range(len(possible_moves)):
+            # print("monsters length: ", len(monsters))
             for monster in monsters:
                 monster_moves = self.get_smart_monster_move(monster[0], wrld)
+
                 if (len(monster_moves) > 1):
                     for monster_move in monster_moves:
-                        temp_val = self.exp_value(wrld, exit_position, possible_moves[i][0], possible_moves[i][1], monster_move[0], monster_move[1], 1)
-                        dist = self.get_chebyshev((monster_move[0], monster_move[1]), possible_moves[i])
-                        if dist < 5:
-                            move_values[i] += 2 * temp_val
-                        else:
-                            move_values[i] += temp_val / 2
+                        temp_val = float(self.exp_value(wrld, exit_position, possible_moves[i][0], possible_moves[i][1], monster_move[0], monster_move[1], 1))
+                        dist = self.get_manhattan((monster_move[0], monster_move[1]), possible_moves[i])
+                        dist2 = self.get_chebyshev((monster_move[0], monster_move[1]), possible_moves[i])
+
+                        if dist2 < 2:
+                            move_values[i] += temp_val
+                        elif dist2 < 10:
+                            move_values[i] += 6 - (0.2 * float(dist))
                 else:
+                    # if monster[0].name is not "stupid":
                     dist = self.get_manhattan((monster_moves[0][0], monster_moves[0][1]), possible_moves[i])
-                    if dist < 5:
-                        move_values[i] -= 50 - dist
+                    dist2 = self.get_chebyshev((monster_moves[0][0], monster_moves[0][1]), possible_moves[i])
+                    distx = abs(possible_moves[i][0] - monster_moves[0][0])
+                    disty = abs(possible_moves[i][1] - monster_moves[0][1])
+
+                    if dist < 8 or dist2 < 10:
+
+                        if dist2 <= 3 or (distx <= disty and disty < 3):
+                            print("distx: ", distx, "   disty: ", disty)
+                            move_values[i] -= 60 - 2 * dist
+                        # elif dist2 <= 5
+                        else:
+                            move_values[i] += 2.0 * dist
+                    # else:
+                    #     temp_val = self.exp_value(wrld, exit_position, possible_moves[i][0], possible_moves[i][1],
+                    #                               monster_move[0], monster_move[1], 1)
+                    #     dist = self.get_chebyshev((monster_move[0], monster_move[1]), possible_moves[i])
+                    #     if dist < 5:
+                    #         move_values[i] += 2 * temp_val
+                    #     else:
+                    #         move_values[i] += temp_val / 2
+
 
 
         return move_values
@@ -244,7 +283,7 @@ class TestCharacter(CharacterEntity):
 
     def find_blocked_value(self, wrld, exit_position, possible_moves, move_values):
         for i in range(len(possible_moves)):
-            move_values[i] += 60 - (3 * self.get_chebyshev(possible_moves[i], exit_position))
+            move_values[i] += 40 - (2 * self.get_chebyshev(possible_moves[i], exit_position))
         return move_values
 
 
@@ -254,55 +293,31 @@ class TestCharacter(CharacterEntity):
             value = 0
 
             for bomb in bombs:
-                dist = self.get_chebyshev((bomb.x, bomb.y), possible_moves[i])
+                self.help = self.get_chebyshev((bomb.x, bomb.y), possible_moves[i])
 
-                if (dist < 5):
+                if (self.help < 5):
                     if (abs(bomb.x - possible_moves[i][0]) == 0):
                         # on the same y axis
-                        value -= 8 - dist
+                        value -= self.help
+                        if bomb.timer <= 3:
+                            value -= 8 - self.help
                         if bomb.timer <= 1:
-                            value -= 100
+                            self.stillness_counter = 0
+                            value -= 1000000
                     elif (abs(bomb.y - possible_moves[i][1]) == 0):
                         # on the same x axis
-                        value -= 8 - dist
+                        value -= self.help
+                        if bomb.timer <= 3:
+                            value -= 8 - self.help
                         if bomb.timer <= 1:
-                            value -= 100
+                            self.stillness_counter = 0
+                            value -= 1000000
                     # else:
                     #     return 100 - self.get_chebyshev((bomb.x, bomb.y), (char_x, char_y))
 
             move_values[i] += value
 
         return move_values
-
-    def bomb(self, wrld, char_x, char_y):
-        value = 0
-        # print("Bomb has been called")
-        bombs = []
-        # grab the list of bombs
-        for x in range(0, wrld.width()):
-            for y in range(0, wrld.height()):
-                bomb = wrld.bomb_at(x, y)
-                if (bomb is not None):
-                    bombs.append(bomb)
-        # check if on axis and assign value for expected
-        if (len(bombs) == 0):
-            self.state = STAY
-            self.prev_state = BOMB
-            return 0
-        else:
-            for bomb in bombs:
-                dist = self.get_chebyshev((bomb.x, bomb.y), (char_x, char_y))
-                if (dist < 4):
-                    if(abs(bomb.x - char_x) == 0):
-                        # on the same y axis
-                        value -= 5 - dist
-                    elif(abs(bomb.y - char_y) == 0):
-                        # on the same x axis
-                        value -= 5 - dist
-                    else:
-                        return 100 - self.get_chebyshev((bomb.x, bomb.y), (char_x, char_y))
-
-        return value
 
 
 
@@ -324,7 +339,7 @@ class TestCharacter(CharacterEntity):
 
     def get_smart_monster_move(self, monster, wrld):
         array = []
-        if not wrld.wall_at(monster.x + monster.dx, monster.y + monster.dy):
+        if not wrld.wall_at(monster.x + monster.dx, monster.y + monster.dy) and monster.name is not "stupid":
             array.append((monster.x + monster.dx, monster.y + monster.dy))
             return array
         else:
@@ -356,7 +371,7 @@ class TestCharacter(CharacterEntity):
         return max(abs(position[0] - exit_position[0]), abs(position[1] - exit_position[1]))
 
     def get_manhattan(self, position, exit_position):
-        return (abs(position[0] - exit_position[0]) + abs(position[1] - exit_position[1]))
+        return abs(position[0] - exit_position[0]) + abs(position[1] - exit_position[1])
 
 
 class PQueue:
