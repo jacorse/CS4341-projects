@@ -373,7 +373,7 @@ class TestCharacter(CharacterEntity):
         return max(abs(position[0] - exit_position[0]), abs(position[1] - exit_position[1]))
 
     def get_manhattan(self, position, exit_position):
-        return (abs(position[0] - exit_position[0]) + abs(position[1]) - exit_position[1])
+        return (abs(position[0] - exit_position[0]) + abs(position[1] - exit_position[1]))
 
 
 class PQueue:

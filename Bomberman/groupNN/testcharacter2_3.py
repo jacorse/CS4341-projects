@@ -27,6 +27,7 @@ class TestCharacter(CharacterEntity):
         self.stillness_counter = 0
         self.lastx = 0
         self.lasty = 0
+        self.dist_min = 1000000
 
     def do(self, wrld):
         if self.exit_position is None:
@@ -38,20 +39,23 @@ class TestCharacter(CharacterEntity):
                 if self.exit_position is not None:
                     break
 
-        monster = None
+        monsters = []
         for x in range(0, wrld.width()):
             for y in range(0, wrld.height()):
-                if wrld.monsters_at(x, y):
-                    monster = (x, y)
+                monster = wrld.monsters_at(x, y)
                 if monster is not None:
-                    break
+                    monsters.append(monster)
+        self.dist_min = 1000000
+        for monster in monsters:
+            temp_dist = self.get_chebyshev((monster[0].x, monster[0].y), (self.x, self.y))
+            if temp_dist < self.dist_min:
+                self.dist_min = temp_dist
 
         self.prev_state = self.state
-        if(monster is not None):
-            if self.get_chebyshev((self.x, self.y), (monster[0], monster[1])) < 3:
-                self.state = MONSTER
-            # else:
-            #     self.state = NORMAL
+        if(self.dist_min < 6):
+            self.state = MONSTER
+        else:
+            self.state = NORMAL
 
         frontier = PQueue()
         frontier.put((self.x, self.y), 0)
@@ -61,7 +65,6 @@ class TestCharacter(CharacterEntity):
 
         if self.state == (NORMAL) or self.state == BLOCKED:
             if self.x == self.start[0] and self.y == self.start[1] or self.prev_state is not NORMAL:
-                print("i should run astar 1")
                 self.a_star(frontier, cost_so_far, wrld, None)
         elif self.state == MONSTER:
             self.a_star(frontier, cost_so_far, wrld, monster)
@@ -78,7 +81,7 @@ class TestCharacter(CharacterEntity):
             self.lasty = self.y
         print("stillness_counter: ", self.stillness_counter)
 
-        if (self.stillness_counter == 2):
+        if (self.stillness_counter == 3):
             # drop a bomb
             self.place_bomb()
             curr_state = self.state
@@ -98,8 +101,8 @@ class TestCharacter(CharacterEntity):
             possible_moves = self.get_possible_moves(current[0], current[1], wrld)
             for next in possible_moves:
                 expected = 0
-                if self.state == MONSTER:
-                    expected = self.exp_value(wrld, self.exit_position, next[0], next[1], monster[0], monster[1], 0)
+                if self.state == MONSTER and self.dist_min<6:
+                    expected = self.exp_value(wrld, self.exit_position, next[0], next[1], monster[0].x, monster[0].y, 0)
                 # if self.state == BOMB:
                 #     #print("expected bomb values injected")
                 #     expected = self.bomb(wrld, next[0], next[1])
@@ -112,7 +115,7 @@ class TestCharacter(CharacterEntity):
 
     def exp_value(self, wrld, exit_position, char_x, char_y, monster_x, monster_y, depth):
         if (char_x, char_y) == exit_position:
-            return 100000
+            return 00000
         value = 0
         monster_moves = self.get_possible_moves(monster_x, monster_y, wrld)
         for move in monster_moves:
@@ -150,14 +153,18 @@ class TestCharacter(CharacterEntity):
                 bomb = wrld.bomb_at(x, y)
 
                 if monster is not None:
-                    monsters.append((x, y))
+                    monsters.append(monster)
                 if explosion is not None:
                     explosions.append((x, y))
                 if bomb is not None:
-                    bombs.append((x, y))
+                    bombs.append(bomb)
 
         # no monsters and path not blocked
         if(exit_position in came_from.keys()):
+            if len(monsters) == 0:
+                self.state = NORMAL
+            else:
+                self.state = MONSTER
             while came_from[next_move][0] is not (self.x, self.y):
                 if came_from[next_move][0] == (self.x, self.y):
                     break
@@ -166,20 +173,16 @@ class TestCharacter(CharacterEntity):
         else:
             self.state = BLOCKED
             move_values = self.find_blocked_value(wrld, exit_position, possible_moves, move_values)
-
             # if bombs present:
             if len(bombs) > 0:
                 move_values = self.find_bomb_value(wrld, bombs, possible_moves, move_values)
-
             # if explosions present:
             if len(explosions) > 0:
                 self.stillness_counter = 0
                 move_values = self.find_explosion_value(wrld, explosions, possible_moves, move_values)
-
             # if monsters present:
             if len(monsters) > 0:
                 move_values = self.find_monster_value(wrld, monsters, exit_position, possible_moves, move_values)
-
 
             # find max value for moves
             max = 0
@@ -189,30 +192,16 @@ class TestCharacter(CharacterEntity):
                     max_value = move_values[i]
                     max = i
 
+            print("max: ", max)
+            print(move_values)
+            print(possible_moves)
+
             # return move with max value
             next_move = possible_moves[max]
 
         print(next_move)
         return next_move
 
-        # if(self.state is MONSTER):
-        #     next_move = self.find_monster_move(wrld, exit_position)
-        # if(self.state is BOMB):
-        #     next_move = self.find_bomb_move(wrld)
-        # if(self.state is STAY):
-        #     next_move = (self.x, self.y)
-        #     explosions = []
-        #     for x in range(0, wrld.width()):
-        #         for y in range(0, wrld.height()):
-        #             explo = wrld.explosion_at(x, y)
-        #             if (explo is not None):
-        #                 explosions.append(explo)
-        #     if len(explosions) == 0:
-        #         self.state = NORMAL
-        #         self.prev_state = STAY
-        #
-        # print("next move: ", next_move)
-        # return next_move
 
     def find_explosion_value(self, wrld, explosions, possible_moves, move_values):
         for i in range(len(possible_moves)):
@@ -224,19 +213,38 @@ class TestCharacter(CharacterEntity):
         return move_values
 
     def find_monster_value(self, wrld, monsters, exit_position, possible_moves, move_values):
+        dist_min = 1000000
+        for monster in monsters:
+            dist = self.get_chebyshev((monster[0].x, monster[0].y), (self.x, self.y))
+            if dist < dist_min:
+                dist_min = dist
+        if dist > 6:
+            return move_values
 
         for i in range(len(possible_moves)):
             for monster in monsters:
-                dist = self.get_chebyshev(monster, possible_moves[i])
-                if dist < 5:
-                    move_values[i] += self.exp_value(wrld, exit_position, possible_moves[i][0], possible_moves[i][1], monster[0], monster[1], 1)
+                monster_moves = self.get_smart_monster_move(monster[0], wrld)
+                if (len(monster_moves) > 1):
+                    for monster_move in monster_moves:
+                        temp_val = self.exp_value(wrld, exit_position, possible_moves[i][0], possible_moves[i][1], monster_move[0], monster_move[1], 1)
+                        dist = self.get_chebyshev((monster_move[0], monster_move[1]), possible_moves[i])
+                        if dist < 5:
+                            move_values[i] += 2 * temp_val
+                        else:
+                            move_values[i] += temp_val / 2
+                else:
+                    dist = self.get_manhattan((monster_moves[0][0], monster_moves[0][1]), possible_moves[i])
+                    if dist < 5:
+                        move_values[i] -= 50 - dist
+
 
         return move_values
 
 
+
     def find_blocked_value(self, wrld, exit_position, possible_moves, move_values):
         for i in range(len(possible_moves)):
-            move_values[i] += 20 - self.get_chebyshev(possible_moves[i], exit_position)
+            move_values[i] += 60 - (3 * self.get_chebyshev(possible_moves[i], exit_position))
         return move_values
 
 
@@ -246,15 +254,19 @@ class TestCharacter(CharacterEntity):
             value = 0
 
             for bomb in bombs:
-                dist = self.get_chebyshev((bomb[0], bomb[1]), possible_moves[i])
+                dist = self.get_chebyshev((bomb.x, bomb.y), possible_moves[i])
 
                 if (dist < 5):
-                    if (abs(bomb[0] - possible_moves[i][0]) == 0):
+                    if (abs(bomb.x - possible_moves[i][0]) == 0):
                         # on the same y axis
                         value -= 8 - dist
-                    elif (abs(bomb[1] - possible_moves[i][1]) == 0):
+                        if bomb.timer <= 1:
+                            value -= 100
+                    elif (abs(bomb.y - possible_moves[i][1]) == 0):
                         # on the same x axis
                         value -= 8 - dist
+                        if bomb.timer <= 1:
+                            value -= 100
                     # else:
                     #     return 100 - self.get_chebyshev((bomb.x, bomb.y), (char_x, char_y))
 
@@ -310,12 +322,41 @@ class TestCharacter(CharacterEntity):
                             array.append((x + dx, y + dy))
         return array
 
+    def get_smart_monster_move(self, monster, wrld):
+        array = []
+        if not wrld.wall_at(monster.x + monster.dx, monster.y + monster.dy):
+            array.append((monster.x + monster.dx, monster.y + monster.dy))
+            return array
+        else:
+            for dx in [-1, 0, 1]:
+                # Avoid out-of-bound indexing
+                if (monster.x + dx >= 0) and (monster.x + dx < wrld.width()):
+                    # Loop through delta y
+                    for dy in [-1, 0, 1]:
+                        # Make sure the monster is moving
+                        if (dx != 0) or (dy != 0):
+                        # Avoid out-of-bound indexing
+                            if (monster.y + dy >= 0) and (monster.y + dy < wrld.height()):
+                                # No need to check impossible moves
+                                if not wrld.wall_at(monster.x + dx, monster.y + dy):
+                                    array.append((monster.x + dx, monster.y + dy))
+        return array
+
+    def get_smart_monster_future(self, monster, wrld):
+        future_positions = []
+        temp = self.get_smart_monster_move(monster, wrld)
+        future_positions.append(temp[0])
+
+
     def get_distance_to_exit(self, position, exit_position):
         return math.sqrt((position[1] - exit_position[1]) * (position[1] - exit_position[1]) +
                         (position[0] - exit_position[0]) * (position[0] - exit_position[0]))
 
     def get_chebyshev(self, position, exit_position):
         return max(abs(position[0] - exit_position[0]), abs(position[1] - exit_position[1]))
+
+    def get_manhattan(self, position, exit_position):
+        return (abs(position[0] - exit_position[0]) + abs(position[1] - exit_position[1]))
 
 
 class PQueue:
