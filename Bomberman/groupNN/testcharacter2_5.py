@@ -82,7 +82,7 @@ class TestCharacter(CharacterEntity):
             self.lasty = self.y
         print("stillness_counter: ", self.stillness_counter)
 
-        if (self.stillness_counter == 1):
+        if (self.stillness_counter == 2):
             # drop a bomb
             self.place_bomb()
             curr_state = self.state
@@ -168,10 +168,14 @@ class TestCharacter(CharacterEntity):
             #     self.state = NORMAL
             # else:
             #     self.state = MONSTER
+            while_counter = 0
             while came_from[next_move][0] is not (self.x, self.y):
+                while_counter += 1
                 if came_from[next_move][0] == (self.x, self.y):
                     break
                 next_move = came_from[next_move][0]
+                if while_counter >= 100:
+                    break
         else:
             if exit_position in came_from.keys():
                 self.state = NORMAL

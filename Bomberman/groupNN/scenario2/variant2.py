@@ -10,7 +10,7 @@ from monsters.stupid_monster import StupidMonster
 
 # TODO This is your code!
 sys.path.insert(1, '../groupNN')
-from testcharacter2_2 import TestCharacter
+from testcharacter2_5 import TestCharacter
 
 # Create the game
 random.seed(950552) # TODO Change this if you want different random choices
@@ -28,3 +28,4 @@ g.add_character(TestCharacter("me", # name
 
 # Run!
 g.go()
+
